@@ -34,6 +34,15 @@ export async function addTask(
   const rawTime = String(formData.get("scheduled_time") ?? "").trim();
   const rawCategory = String(formData.get("category") ?? "").trim();
 
+  // Checked here as well as by the column's constraint: a rejected insert comes
+  // back as a Postgres error string, and "violates check constraint
+  // tasks_duration_minutes_check" is not something to show a person.
+  const rawDuration = String(formData.get("duration_minutes") ?? "").trim();
+  const duration = rawDuration ? Number(rawDuration) : null;
+  if (duration !== null && (!Number.isInteger(duration) || duration <= 0 || duration > 1440)) {
+    return { error: "How long should be a whole number of minutes, up to 1440 (24h)." };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.from("tasks").insert({
     user_id: user.id,
@@ -41,6 +50,7 @@ export async function addTask(
     scheduled_on: day,
     // <input type="time"> gives "HH:MM"; Postgres `time` accepts that directly.
     scheduled_time: rawTime || null,
+    duration_minutes: duration,
     category: rawCategory || null,
     repeat_daily: formData.get("repeat_daily") === "on",
     // Anything but the fitness checkbox is a general task — the column's check

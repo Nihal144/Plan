@@ -75,6 +75,44 @@ export function formatTime(time: string | null): string | null {
   return `${String(hour12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
+/**
+ * "Today", "Tomorrow", or the full date.
+ *
+ * A list spanning a fortnight needs the near days named rather than dated —
+ * "Monday, August 17" makes you work out whether that is now.
+ */
+export function relativeDayLabel(day: string, todayStr: string): string {
+  if (day === todayStr) return "Today";
+  if (day === addDays(todayStr, 1)) return "Tomorrow";
+  return longDayLabel(day);
+}
+
+/**
+ * "22:10:00" -> "22:10". The timeline gutter is a narrow column of times read as
+ * a column, where 24h keeps every row the same width and sorts visually; the
+ * 12h form stays on the cards, where it is read as prose.
+ */
+export function formatClock(time: string | null): string | null {
+  if (!time) return null;
+  const [h, m] = time.split(":");
+  return `${h.padStart(2, "0")}:${m}`;
+}
+
+/** 80 -> "1 hr 20 mins". Returns null when a task has no duration set. */
+export function formatDuration(minutes: number | null): string | null {
+  if (!minutes || minutes <= 0) return null;
+
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const parts: string[] = [];
+
+  if (hours) parts.push(`${hours} ${hours === 1 ? "hr" : "hrs"}`);
+  // Not "1 hr 0 mins": the zero part is dropped rather than padded.
+  if (mins) parts.push(`${mins} ${mins === 1 ? "min" : "mins"}`);
+
+  return parts.join(" ");
+}
+
 export type Period = "morning" | "afternoon" | "evening" | "anytime";
 
 export const PERIOD_LABELS: Record<Period, string> = {

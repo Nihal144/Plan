@@ -94,6 +94,9 @@ export function AddTask({
         className="rounded-xl border border-zinc-200 px-3.5 py-2.5 text-[15px] focus:border-violet-400 focus:outline-none focus:ring-[3px] focus:ring-violet-500/15 dark:border-zinc-700 dark:bg-zinc-800"
       />
 
+      {/* Start time and length are separate fields because they answer different
+          questions: one puts the task in the day's gutter, the other prints under
+          its name. Both optional — most tasks are neither. */}
       <div className="flex gap-2">
         <label className="flex flex-1 flex-col gap-1">
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Time</span>
@@ -104,16 +107,36 @@ export function AddTask({
           />
         </label>
         <label className="flex flex-1 flex-col gap-1">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Tag</span>
-          <input
-            name="category"
-            placeholder="Optional"
-            autoComplete="off"
-            maxLength={24}
-            className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
-          />
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            How long
+          </span>
+          <div className="relative">
+            <input
+              type="number"
+              name="duration_minutes"
+              inputMode="numeric"
+              min={1}
+              max={1440}
+              placeholder="30"
+              className="w-full rounded-xl border border-zinc-200 py-2 pl-3 pr-12 text-sm focus:border-violet-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
+              mins
+            </span>
+          </div>
         </label>
       </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Tag</span>
+        <input
+          name="category"
+          placeholder="Optional — also picks the icon"
+          autoComplete="off"
+          maxLength={24}
+          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800"
+        />
+      </label>
 
       {/* A checkbox, not a Yes/No pair: the default is a one-off, and repeating
           is the deliberate opt-in. */}

@@ -2,7 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { requireUser, getTasksForDay, getWeekCounts, getPairingState } from "@/lib/dal";
 import { signOut } from "@/app/actions/auth";
-import { today, weekOf, formatTime, longDayLabel } from "@/lib/dates";
+import { today, weekOf, formatTime, formatDuration, longDayLabel } from "@/lib/dates";
+import { TaskGlyph } from "../plan/tasks/task-glyph";
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning";
@@ -117,18 +118,22 @@ export default async function HomePage() {
           </h2>
           {upNext.map((task) => {
             const time = formatTime(task.scheduled_time);
+            const duration = formatDuration(task.duration_minutes);
             return (
               <Link
                 key={task.id}
                 href="/plan/tasks"
                 className="flex items-center gap-4 rounded-2xl border border-zinc-200 px-4 py-3.5 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
               >
-                <span className="h-7 w-7 shrink-0 rounded-lg border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800" />
+                {/* The same derived badge the timeline uses, so a task is
+                    recognisable by its colour across both screens. */}
+                <TaskGlyph task={task} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold [overflow-wrap:anywhere]">{task.text}</span>
-                  {time && (
-                    <span className="mt-0.5 block text-sm tabular-nums text-zinc-400 dark:text-zinc-500">
-                      {time}
+                  {(time || duration) && (
+                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400 dark:text-zinc-500">
+                      {time && <span className="tabular-nums">{time}</span>}
+                      {duration && <span>{duration}</span>}
                     </span>
                   )}
                 </span>

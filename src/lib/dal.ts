@@ -103,6 +103,8 @@ export type Task = {
   done: boolean;
   scheduled_on: string;
   scheduled_time: string | null;
+  /** How long it takes, in minutes. Null for the many tasks that are just a line on a day. */
+  duration_minutes: number | null;
   category: string | null;
   repeat_daily: boolean;
   kind: TaskKind;
@@ -111,7 +113,7 @@ export type Task = {
 };
 
 const TASK_COLUMNS =
-  "id, user_id, text, done, scheduled_on, scheduled_time, category, repeat_daily, kind, shared_with_partner, created_at";
+  "id, user_id, text, done, scheduled_on, scheduled_time, duration_minutes, category, repeat_daily, kind, shared_with_partner, created_at";
 
 /**
  * A task belongs on `day` if it is a one-off scheduled for that exact day, or a
@@ -159,42 +161,48 @@ export const getTasksForDay = cache(async (day: string): Promise<Task[]> => {
   return (tasks.data ?? []) as Task[];
 });
 
-export type LoopedTasks = {
-  /** Your partner's tasks, looped in to you. Read-only — 0009 relaxed SELECT only. */
-  fromPartner: Task[];
-  /** Your own tasks, looped in to them. */
-  toPartner: Task[];
-};
+/** A looped-in task, tagged with which side of the pair owns it. */
+export type LoopedTask = { task: Task; mine: boolean };
 
 /**
- * One day's looped-in tasks, both directions, in a single query.
+ * Every looped-in task in a date window, both directions, in a single query.
  *
  * Since 0009 the SELECT policy returns your own rows plus your partner's opted-in
- * ones, so filtering on `shared_with_partner` already yields exactly the two sets
- * — the split is by owner in memory rather than a second round trip. Nothing here
+ * ones, so filtering on `shared_with_partner` already yields both sides — the
+ * owner tag is applied in memory rather than in a second round trip. Nothing here
  * names a user id to the database: the policy decides what comes back.
+ *
+ * The window matches `getWeekCounts`: one-offs inside it, plus every repeating
+ * task that had started by the end of it, since a repeat lands on every day from
+ * its start date onward.
  */
-export const getLoopedTasks = cache(async (day: string): Promise<LoopedTasks> => {
-  const supabase = await createClient();
-  const user = await getUser();
-  if (!user) return { fromPartner: [], toPartner: [] };
+export const getLoopedTasks = cache(
+  async (from: string, to: string): Promise<LoopedTask[]> => {
+    const supabase = await createClient();
+    const user = await getUser();
+    if (!user) return [];
 
-  const tasks = await supabase
-    .from("tasks")
-    .select(TASK_COLUMNS)
-    .eq("shared_with_partner", true)
-    .or(dayFilter(day))
-    .order("scheduled_time", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
+    const tasks = await supabase
+      .from("tasks")
+      .select(TASK_COLUMNS)
+      .eq("shared_with_partner", true)
+      .or(
+        `and(repeat_daily.eq.false,scheduled_on.gte.${from},scheduled_on.lte.${to}),` +
+          `and(repeat_daily.eq.true,scheduled_on.lte.${to})`,
+      )
+      // Chronological, which is the order the page groups them in.
+      .order("scheduled_on", { ascending: true })
+      .order("scheduled_time", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
 
-  if (tasks.error) logQueryError("getLoopedTasks", tasks.error);
+    if (tasks.error) logQueryError("getLoopedTasks", tasks.error);
 
-  const rows = (tasks.data ?? []) as Task[];
-  return {
-    fromPartner: rows.filter((t) => t.user_id !== user.id),
-    toPartner: rows.filter((t) => t.user_id === user.id),
-  };
-});
+    return ((tasks.data ?? []) as Task[]).map((task) => ({
+      task,
+      mine: task.user_id === user.id,
+    }));
+  },
+);
 
 /**
  * Per-day totals for the whole visible week, so the strip can show which days
