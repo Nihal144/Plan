@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Plan</title>
+
+  <style>
+    /* ---------- Base ---------- */
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      min-height: 100vh;
+      background: #f4f5f7;
+      color: #1c1f23;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    /* ---------- Card ---------- */
+
+    .card {
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px;
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05),
+        0 8px 24px rgba(16, 24, 40, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 24px;
+      font-size: 1.5rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    /* ---------- Add-task form ---------- */
+
+    .add-form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .add-input {
+      flex: 1;
+      min-width: 0; /* lets the input shrink instead of overflowing the card */
+      padding: 11px 14px;
+      border: 1px solid #d5d8dd;
+      border-radius: 9px;
+      font: inherit;
+      color: inherit;
+      background: #fff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .add-input::placeholder {
+      color: #9aa1ab;
+    }
+
+    .add-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    }
+
+    .add-button {
+      flex-shrink: 0;
+      padding: 11px 20px;
+      border: none;
+      border-radius: 9px;
+      background: #1c1f23;
+      color: #fff;
+      font: inherit;
+      font-weight: 550;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+
+    .add-button:hover {
+      background: #34383e;
+    }
+
+    .add-button:focus-visible {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
+    }
+
+    /* ---------- Counter ---------- */
+
+    .counter {
+      margin: 0 0 14px;
+      font-size: 0.875rem;
+      color: #6b727c;
+    }
+
+    /* ---------- Task list ---------- */
+
+    .task-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .task {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 4px;
+      border-top: 1px solid #eceef1;
+    }
+
+    .task-checkbox {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+      accent-color: #1c1f23;
+      cursor: pointer;
+    }
+
+    .task-text {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere; /* a long unbroken string must not widen the card */
+    }
+
+    /* Completed state: struck through and dimmed. */
+    .task.done .task-text {
+      text-decoration: line-through;
+      opacity: 0.55;
+    }
+
+    .delete-button {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: #9aa1ab;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .delete-button:hover {
+      background: #f3f4f6;
+      color: #d64545;
+    }
+
+    .delete-button:focus-visible {
+      outline: 2px solid #3b82f6;
+      outline-offset: 1px;
+    }
+
+    /* ---------- Empty state ---------- */
+
+    .empty-state {
+      margin: 0;
+      padding: 28px 0;
+      border-top: 1px solid #eceef1;
+      text-align: center;
+      color: #9aa1ab;
+    }
+
+    /* Toggled by JS depending on whether any tasks exist. */
+    [hidden] {
+      display: none !important;
+    }
+
+    /* ---------- Small screens ---------- */
+
+    @media (max-width: 600px) {
+      body {
+        padding: 20px 12px;
+      }
+
+      .card {
+        padding: 22px 18px;
+      }
+
+      /* Stack the input above the button so neither gets squeezed. */
+      .add-form {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="card">
+    <h1>The Plan</h1>
+
+    <!-- A <form> gives us Enter-to-submit for free, no key handler needed. -->
+    <form class="add-form" id="add-form">
+      <input
+        class="add-input"
+        id="task-input"
+        type="text"
+        placeholder="What needs doing?"
+        aria-label="New task"
+        autocomplete="off"
+      >
+      <button class="add-button" type="submit">Add</button>
+    </form>
+
+    <p class="counter" id="counter"></p>
+
+    <ul class="task-list" id="task-list"></ul>
+
+    <p class="empty-state" id="empty-state">No tasks yet. Add one above to get started.</p>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // Stored shape: [{ id: string, text: string, done: boolean }, ...]
+      var STORAGE_KEY = "theplanapp.tasks";
+
+      var form = document.getElementById("add-form");
+      var input = document.getElementById("task-input");
+      var list = document.getElementById("task-list");
+      var counter = document.getElementById("counter");
+      var emptyState = document.getElementById("empty-state");
+
+      var tasks = loadTasks();
+
+      /* ---------- Persistence ---------- */
+
+      // Anything unexpected in storage yields an empty list rather than an
+      // exception, so corrupt data can never leave the page permanently blank.
+      function loadTasks() {
+        try {
+          var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (!Array.isArray(parsed)) return [];
+
+          return parsed.filter(function (task) {
+            return (
+              task &&
+              typeof task.id === "string" &&
+              typeof task.text === "string" &&
+              typeof task.done === "boolean"
+            );
+          });
+        } catch (err) {
+          return [];
+        }
+      }
+
+      // Storage can throw when it is full or disabled (e.g. private browsing);
+      // the in-memory list still works, so failing to save is not fatal.
+      function saveTasks() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        } catch (err) {
+          /* ignore */
+        }
+      }
+
+      /* ---------- Task operations ---------- */
+
+      // Not crypto.randomUUID(): that needs a secure context, and this page is
+      // meant to work when opened straight off disk. These ids are only list keys.
+      function createId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2);
+      }
+
+      function addTask(text) {
+        var trimmed = text.trim();
+        if (!trimmed) return; // ignore empty / whitespace-only input
+
+        tasks.push({ id: createId(), text: trimmed, done: false });
+        saveTasks();
+        render();
+      }
+
+      function toggleTask(id) {
+        tasks.forEach(function (task) {
+          if (task.id === id) task.done = !task.done;
+        });
+        saveTasks();
+        render();
+      }
+
+      function deleteTask(id) {
+        tasks = tasks.filter(function (task) {
+          return task.id !== id;
+        });
+        saveTasks();
+        render();
+      }
+
+      /* ---------- Rendering ---------- */
+
+      // Builds one <li>. Task text goes in via textContent, never innerHTML —
+      // it is user-supplied and persisted, so interpolating it as markup would
+      // be a stored-XSS hole.
+      function buildTaskElement(task) {
+        var item = document.createElement("li");
+        item.className = task.done ? "task done" : "task";
+
+        var checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "task-checkbox";
+        checkbox.checked = task.done;
+        checkbox.dataset.id = task.id;
+        checkbox.setAttribute("aria-label", "Mark “" + task.text + "” as done");
+
+        var text = document.createElement("span");
+        text.className = "task-text";
+        text.textContent = task.text;
+
+        var deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "delete-button";
+        deleteButton.dataset.id = task.id;
+        // The icon is decorative, so the button needs its own accessible name.
+        deleteButton.setAttribute("aria-label", "Delete “" + task.text + "”");
+        deleteButton.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'aria-hidden="true"><path d="M2 2l10 10M12 2L2 12"/></svg>';
+
+        item.appendChild(checkbox);
+        item.appendChild(text);
+        item.appendChild(deleteButton);
+        return item;
+      }
+
+      // Full redraw on every change: at this size it is the clearest approach
+      // and avoids hand-rolled DOM diffing.
+      function render() {
+        var doneCount = tasks.filter(function (task) {
+          return task.done;
+        }).length;
+
+        counter.textContent = doneCount + " of " + tasks.length + " tasks completed";
+
+        list.textContent = "";
+        tasks.forEach(function (task) {
+          list.appendChild(buildTaskElement(task));
+        });
+
+        emptyState.hidden = tasks.length > 0;
+      }
+
+      /* ---------- Events ---------- */
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        addTask(input.value);
+        input.value = "";
+        input.focus();
+      });
+
+      // One delegated listener per event type, rather than listeners per row —
+      // these keep working across the full re-render.
+      list.addEventListener("change", function (event) {
+        var target = event.target;
+        if (target.classList.contains("task-checkbox")) {
+          toggleTask(target.dataset.id);
+        }
+      });
+
+      list.addEventListener("click", function (event) {
+        var button = event.target.closest(".delete-button");
+        if (button) deleteTask(button.dataset.id);
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
