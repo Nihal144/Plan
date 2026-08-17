@@ -54,6 +54,8 @@ export type WorkoutEntry = {
   distance: number | null;
   note: string | null;
   is_done: boolean;
+  /** Deliberately passed on today. Resolved, but not done. */
+  skipped: boolean;
   completed_at: string | null;
   sort_order: number;
   created_at: string;

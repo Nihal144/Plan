@@ -86,7 +86,7 @@ export type GymDay = {
 // One literal, not a concatenation: supabase-js parses the select string at the
 // type level, and a built-up `string` defeats that and infers an error type.
 const ENTRY_COLUMNS =
-  "id, workout_day_id, user_id, exercise_name, source, sets, reps, weight, duration, distance, note, is_done, completed_at, sort_order, created_at";
+  "id, workout_day_id, user_id, exercise_name, source, sets, reps, weight, duration, distance, note, is_done, skipped, completed_at, sort_order, created_at";
 
 /**
  * One category's log for one date.
@@ -114,9 +114,10 @@ export const getGymDay = cache(
       .from("workout_entries")
       .select(ENTRY_COLUMNS)
       .eq("workout_day_id", row.id)
-      // Incomplete work first, then the order the user sees it in. Done entries
-      // sinking below the rest is the sort Phase 4 depends on.
+      // Outstanding first, then skipped, then finished — resolved work sinks
+      // below whatever is still to do.
       .order("is_done", { ascending: true })
+      .order("skipped", { ascending: true })
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
 

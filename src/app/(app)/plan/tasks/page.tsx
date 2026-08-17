@@ -1,5 +1,11 @@
 import Image from "next/image";
-import { requireUser, getTasksForDay, getWeekCounts, type Task } from "@/lib/dal";
+import {
+  requireUser,
+  getTasksForDay,
+  getWeekCounts,
+  getPairingState,
+  type Task,
+} from "@/lib/dal";
 import { toggleTask, deleteTask, deferTask } from "@/app/actions/tasks";
 import {
   today,
@@ -47,14 +53,22 @@ export default async function TasksPage({ searchParams }: PageProps<"/plan/tasks
   const query = (typeof params.q === "string" ? params.q : "").trim();
 
   const week = weekOf(selected);
-  const [allTasks, counts] = await Promise.all([
+  const [allTasks, counts, pairing] = await Promise.all([
     getTasksForDay(selected),
     getWeekCounts(week[0], week[6]),
+    getPairingState(),
   ]);
 
-  const tasks = query
+  const partnerName = pairing.pair?.display_name ?? null;
+
+  const matching = query
     ? allTasks.filter((t) => t.text.toLowerCase().includes(query.toLowerCase()))
     : allTasks;
+
+  // Since 0009 the day can also carry a partner's looped-in tasks. They are shown
+  // separately and excluded from your own progress — they are not your work.
+  const tasks = matching.filter((t) => t.user_id === user.id);
+  const loopedIn = matching.filter((t) => t.user_id !== user.id);
 
   const doneCount = tasks.filter((t) => t.done).length;
   const percent = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
@@ -131,14 +145,14 @@ export default async function TasksPage({ searchParams }: PageProps<"/plan/tasks
             basePath="/plan/tasks"
           />
 
-          {groups.length === 0 ? (
+          {groups.length === 0 && loopedIn.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
               <p className="font-medium text-zinc-500 dark:text-zinc-400">
                 {query ? "Nothing matches that filter." : "Nothing scheduled for this day."}
               </p>
               {!query && (
                 <p className="mt-1 text-sm text-zinc-400">
-                  Add a task to get started.
+                  Add something to get started.
                 </p>
               )}
             </div>
@@ -154,12 +168,23 @@ export default async function TasksPage({ searchParams }: PageProps<"/plan/tasks
                   ))}
                 </section>
               ))}
+
+              {loopedIn.length > 0 && (
+                <section className="flex flex-col gap-2.5">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                    {partnerName ? `${partnerName} looped you in` : "Looped in"}
+                  </h2>
+                  {loopedIn.map((task) => (
+                    <LoopedTaskRow key={task.id} task={task} />
+                  ))}
+                </section>
+              )}
             </div>
           )}
         </div>
 
         <aside className="flex flex-col gap-5">
-          <AddTask day={selected} />
+          <AddTask day={selected} partnerName={partnerName} />
           <CompletionCard percent={percent} done={doneCount} total={tasks.length} />
         </aside>
       </div>
@@ -185,33 +210,48 @@ function TaskRow({ task, day }: { task: Task; day: string }) {
     >
       <div className="min-w-0 flex-1">
         <p
-          className={`font-semibold [overflow-wrap:anywhere] ${
+          className={`flex items-center gap-2 font-semibold ${
             task.done
-              ? "text-emerald-800 line-through dark:text-emerald-200/70"
+              ? "text-emerald-800 dark:text-emerald-200/80"
               : isFitness
                 ? "text-orange-900 dark:text-orange-200"
                 : ""
           }`}
         >
-          {/*
-            A fitness task opens its own list. The link is stretched over the whole
-            card with `after:inset-0` rather than wrapping it — the card already
-            holds three submit buttons, and an anchor may not contain them.
-          */}
-          {isFitness ? (
-            <Link
-              href={`/plan/fitness?date=${day}#task-${task.id}`}
-              className="after:absolute after:inset-0 after:rounded-2xl hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-orange-500"
-            >
-              {task.text}
-            </Link>
-          ) : (
-            task.text
-          )}
+          {/* Marks completion without striking the text out, so a finished task
+              stays readable. The label lives on the "Completed" badge. */}
+          {task.done && <CircleCheck />}
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            {/*
+              A fitness task opens its own list. The link is stretched over the whole
+              card with `after:inset-0` rather than wrapping it — the card already
+              holds three submit buttons, and an anchor may not contain them.
+            */}
+            {isFitness ? (
+              <Link
+                href={`/plan/fitness?date=${day}#task-${task.id}`}
+                className="after:absolute after:inset-0 after:rounded-2xl hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-orange-500"
+              >
+                {task.text}
+              </Link>
+            ) : (
+              task.text
+            )}
+          </span>
         </p>
-        {(time || task.repeat_daily) && (
+        {(time || task.repeat_daily || task.shared_with_partner) && (
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400 dark:text-zinc-500">
             {time && <span className="tabular-nums">{time}</span>}
+            {/* So you can tell at a glance which of your tasks your partner sees. */}
+            {task.shared_with_partner && (
+              <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400" title="Your partner can see this">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Looped in
+              </span>
+            )}
             {task.repeat_daily && (
               <span className="flex items-center gap-1" title="Repeats every day">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -301,6 +341,72 @@ function TaskRow({ task, day }: { task: Task; day: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A task your partner looped you in on.
+ *
+ * Read-only by construction, not by hiding buttons: 0009 relaxed only the SELECT
+ * policy, so an insert, update or delete against this row is rejected by Postgres.
+ * Offering a tick that always fails would be worse than offering none.
+ */
+function LoopedTaskRow({ task }: { task: Task }) {
+  const time = formatTime(task.scheduled_time);
+
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-sky-200 bg-sky-50/60 px-4 py-3.5 dark:border-sky-500/30 dark:bg-sky-500/10">
+      <div className="min-w-0 flex-1">
+        <p
+          className={`flex items-center gap-2 font-semibold ${
+            task.done ? "text-emerald-800 dark:text-emerald-200/80" : ""
+          }`}
+        >
+          {task.done && <CircleCheck />}
+          <span className="min-w-0 [overflow-wrap:anywhere]">{task.text}</span>
+        </p>
+        {(time || task.repeat_daily || task.done) && (
+          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-zinc-400 dark:text-zinc-500">
+            {time && <span className="tabular-nums">{time}</span>}
+            {task.repeat_daily && <span>Daily</span>}
+            {task.done && (
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                Done
+              </span>
+            )}
+          </p>
+        )}
+      </div>
+
+      <span className="shrink-0 rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white dark:bg-sky-500">
+        Looped in
+      </span>
+    </div>
+  );
+}
+
+/**
+ * lucide `circle-check`, inlined. The project has no icon dependency — every
+ * other icon here is hand-inlined SVG, so adding one for a single glyph would
+ * ship a package to render nine paths.
+ */
+function CircleCheck() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0 text-emerald-600 dark:text-emerald-400"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
   );
 }
 

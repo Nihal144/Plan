@@ -5,8 +5,9 @@ import {
   getGymDay,
   getPoolNames,
 } from "@/lib/gym/queries";
-import { toggleEntry, removeEntry } from "@/app/actions/gym";
+import { toggleEntry, skipEntry, removeEntry } from "@/app/actions/gym";
 import { today, isValidDay, weekOf } from "@/lib/dates";
+import { isDayComplete } from "@/lib/gym/completion";
 import type { WorkoutEntry } from "@/lib/gym/types";
 import { WeekStrip } from "../week-strip";
 import { ViewSwitcher } from "../view-switcher";
@@ -71,7 +72,9 @@ export default async function FitnessPage({ searchParams }: PageProps<"/plan/fit
   }
 
   const doneCount = day.entries.filter((e) => e.is_done).length;
-  const allDone = day.entries.length > 0 && doneCount === day.entries.length;
+  // The same rule the server uses to tick the Fitness task, so the banner and
+  // the dashboard can never disagree about whether the day is finished.
+  const allDone = isDayComplete(day.entries);
 
   return (
     <div className="flex flex-col gap-8 px-6 py-8 lg:px-10 lg:py-9">
@@ -148,67 +151,138 @@ export default async function FitnessPage({ searchParams }: PageProps<"/plan/fit
   );
 }
 
+/**
+ * Same anatomy as a task card: the name on the left, the actions on the right,
+ * revealed on hover. No control sits before the text.
+ */
 function EntryRow({ entry, date }: { entry: WorkoutEntry; date: string }) {
+  const tone = entry.is_done
+    ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10"
+    : entry.skipped
+      ? "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/40"
+      : "border-zinc-200 dark:border-zinc-800";
+
   return (
-    <div
-      className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
-        entry.is_done
-          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10"
-          : "border-zinc-200 dark:border-zinc-800"
+    <div className={`group flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${tone}`}>
+      <p
+        className={`flex min-w-0 flex-1 items-center gap-2 text-sm font-medium ${
+          entry.is_done
+            ? "text-emerald-800 dark:text-emerald-200/80"
+            : entry.skipped
+              ? "text-zinc-400 dark:text-zinc-500"
+              : ""
+        }`}
+      >
+        {entry.is_done && <CircleCheck />}
+        <span className="min-w-0 [overflow-wrap:anywhere]">{entry.exercise_name}</span>
+      </p>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {/* State is never carried by colour alone — each has a text label. */}
+        {entry.is_done && <StateBadge tone="done">Done</StateBadge>}
+        {entry.skipped && <StateBadge tone="skipped">Skipped</StateBadge>}
+
+        <div
+          className={`flex items-center gap-1 transition-opacity max-sm:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 ${
+            entry.is_done || entry.skipped ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <form action={toggleEntry} className="flex">
+            <input type="hidden" name="id" value={entry.id} />
+            {/* Current state, not the target — the action inverts it. */}
+            <input type="hidden" name="done" value={String(entry.is_done)} />
+            {/* Which day's Fitness task to re-derive after the write. */}
+            <input type="hidden" name="date" value={date} />
+            <button
+              type="submit"
+              aria-label={`Mark “${entry.exercise_name}” as ${entry.is_done ? "not done" : "done"}`}
+              title={entry.is_done ? "Undo" : "Mark as done"}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                entry.is_done
+                  ? "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+                  : "text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+              }`}
+            >
+              {entry.is_done ? <UndoIcon /> : <CheckIcon />}
+            </button>
+          </form>
+
+          <form action={skipEntry} className="flex">
+            <input type="hidden" name="id" value={entry.id} />
+            <input type="hidden" name="skipped" value={String(entry.skipped)} />
+            <input type="hidden" name="date" value={date} />
+            <button
+              type="submit"
+              aria-label={`${entry.skipped ? "Un-skip" : "Skip"} “${entry.exercise_name}”`}
+              title={entry.skipped ? "Un-skip" : "Skip today"}
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-zinc-400 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-zinc-500 dark:hover:bg-orange-500/15 dark:hover:text-orange-300"
+            >
+              <SkipIcon />
+              <span className="hidden sm:inline">{entry.skipped ? "Un-skip" : "Skip"}</span>
+            </button>
+          </form>
+
+          <form action={removeEntry} className="flex">
+            <input type="hidden" name="id" value={entry.id} />
+            <input type="hidden" name="date" value={date} />
+            <button
+              type="submit"
+              aria-label={`Remove “${entry.exercise_name}”`}
+              title="Remove"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-zinc-500 dark:hover:bg-red-950"
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M2 2l10 10M12 2L2 12" />
+              </svg>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StateBadge({ tone, children }: { tone: "done" | "skipped"; children: string }) {
+  return (
+    <span
+      className={`hidden rounded-full px-2.5 py-0.5 text-[11px] font-semibold sm:inline ${
+        tone === "done"
+          ? "bg-emerald-600 text-white dark:bg-emerald-500"
+          : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
       }`}
     >
-      <form action={toggleEntry} className="flex">
-        <input type="hidden" name="id" value={entry.id} />
-        {/* Current state, not the target — the action inverts it. */}
-        <input type="hidden" name="done" value={String(entry.is_done)} />
-        {/* Which day's Fitness task to re-derive after the write. */}
-        <input type="hidden" name="date" value={date} />
-        <button
-          type="submit"
-          role="checkbox"
-          aria-checked={entry.is_done}
-          aria-label={`Mark “${entry.exercise_name}” as ${entry.is_done ? "not done" : "done"}`}
-          className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
-            entry.is_done
-              ? "border-emerald-500 bg-emerald-600 text-white dark:border-emerald-500/50 dark:bg-emerald-500"
-              : "border-zinc-300 hover:border-emerald-500 dark:border-zinc-600"
-          }`}
-        >
-          {entry.is_done && <CheckIcon />}
-        </button>
-      </form>
+      {children}
+    </span>
+  );
+}
 
-      <span className="min-w-0 flex-1">
-        <span
-          className={`block text-sm font-medium [overflow-wrap:anywhere] ${
-            entry.is_done ? "text-emerald-800 line-through dark:text-emerald-200/70" : ""
-          }`}
-        >
-          {entry.exercise_name}
-        </span>
-        {/* Completion is never signalled by colour alone. */}
-        {entry.is_done && (
-          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-            Done
-          </span>
-        )}
-      </span>
+/** lucide `circle-check`, inlined to match the task cards. */
+function CircleCheck() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
 
-      <form action={removeEntry} className="flex">
-        <input type="hidden" name="id" value={entry.id} />
-        <input type="hidden" name="date" value={date} />
-        <button
-          type="submit"
-          aria-label={`Remove “${entry.exercise_name}”`}
-          title="Remove"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 max-sm:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-red-950"
-        >
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <path d="M2 2l10 10M12 2L2 12" />
-          </svg>
-        </button>
-      </form>
-    </div>
+/** lucide `skip-forward`. */
+function SkipIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4l10 8-10 8V4z" />
+      <path d="M19 5v14" />
+    </svg>
+  );
+}
+
+/** lucide `rotate-ccw`. */
+function UndoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
   );
 }
 

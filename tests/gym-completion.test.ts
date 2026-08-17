@@ -23,4 +23,38 @@ describe("isDayComplete", () => {
   it("is false for a single unfinished entry", () => {
     expect(isDayComplete([{ is_done: false }])).toBe(false);
   });
+
+  describe("skipping", () => {
+    it("does not let a skipped exercise hold the day open", () => {
+      expect(
+        isDayComplete([
+          { is_done: true },
+          { is_done: false, skipped: true },
+        ]),
+      ).toBe(true);
+    });
+
+    it("is false when everything was skipped and nothing done", () => {
+      expect(
+        isDayComplete([
+          { is_done: false, skipped: true },
+          { is_done: false, skipped: true },
+        ]),
+      ).toBe(false);
+    });
+
+    it("is still false while something real is outstanding", () => {
+      expect(
+        isDayComplete([
+          { is_done: true },
+          { is_done: false, skipped: true },
+          { is_done: false },
+        ]),
+      ).toBe(false);
+    });
+
+    it("treats a missing skipped flag as not skipped", () => {
+      expect(isDayComplete([{ is_done: true }, { is_done: false }])).toBe(false);
+    });
+  });
 });

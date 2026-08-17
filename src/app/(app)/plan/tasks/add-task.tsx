@@ -6,7 +6,14 @@ import { longDayLabel } from "@/lib/dates";
 
 const EMPTY: TaskFormState = {};
 
-export function AddTask({ day }: { day: string }) {
+export function AddTask({
+  day,
+  partnerName,
+}: {
+  day: string;
+  /** Null when unpaired — the loop-in toggle only exists with someone to loop in. */
+  partnerName: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -48,7 +55,7 @@ export function AddTask({ day }: { day: string }) {
         >
           <path d="M12 5v14M5 12h14" />
         </svg>
-        Add New Task
+        Add to Things to do
       </button>
     );
   }
@@ -141,6 +148,23 @@ export function AddTask({ day }: { day: string }) {
           </span>
         </span>
       </label>
+
+      {partnerName && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 p-3 has-checked:border-sky-400 has-checked:bg-sky-50 dark:border-zinc-700 dark:has-checked:bg-sky-500/15">
+          <input
+            type="checkbox"
+            name="shared_with_partner"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Loop {partnerName}</span>
+            <span className="block text-xs text-zinc-500 dark:text-zinc-400">
+              Shows on {partnerName}&apos;s dashboard. They can see it, not change
+              it — only you can tick or delete it.
+            </span>
+          </span>
+        </label>
+      )}
 
       {state.error && (
         <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">

@@ -15,11 +15,15 @@ export default async function HomePage() {
   const todayStr = today();
   const week = weekOf(todayStr);
 
-  const [tasks, weekCounts, pairing] = await Promise.all([
+  const [allTasks, weekCounts, pairing] = await Promise.all([
     getTasksForDay(todayStr),
     getWeekCounts(week[0], week[6]),
     getPairingState(),
   ]);
+
+  // Own tasks only. Since 0009 the day can also carry a partner's looped-in
+  // tasks, and those are not your work to be measured against.
+  const tasks = allTasks.filter((t) => t.user_id === user.id);
 
   const done = tasks.filter((t) => t.done).length;
   const remaining = tasks.length - done;

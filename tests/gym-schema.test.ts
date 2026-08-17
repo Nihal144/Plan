@@ -11,7 +11,7 @@ describe("gym data layer", () => {
   let db: PGlite;
 
   beforeAll(async () => {
-    db = await migratedDb("0007_gym.sql");
+    db = await migratedDb("0007_gym.sql", "0008_skip_exercise.sql");
   });
 
   afterAll(async () => {
@@ -90,12 +90,40 @@ describe("gym data layer", () => {
     }
   });
 
-  it("re-running the migration changes nothing", async () => {
+  it("defaults new entries to not skipped", async () => {
+    const userId = await createUser(db, "skip@example.com");
+    await setAuthUid(db, userId);
+
+    const { rows: cat } = await db.query<{ id: string }>(
+      "select id from public.gym_categories where slug = 'legs'",
+    );
+    const { rows: day } = await db.query<{ get_or_create_workout_day: string }>(
+      "select public.get_or_create_workout_day($1, $2)",
+      [cat[0].id, "2026-08-21"],
+    );
+
+    const { rows } = await db.query<{ skipped: boolean; is_done: boolean }>(
+      `insert into public.workout_entries
+         (workout_day_id, user_id, exercise_name, source)
+       values ($1, $2, 'Back Squat', 'manual')
+       returning skipped, is_done`,
+      [day[0].get_or_create_workout_day, userId],
+    );
+
+    expect(rows[0]).toEqual({ skipped: false, is_done: false });
+  });
+
+  it("re-running the migrations changes nothing", async () => {
     const before = await db.query<{ n: number }>(
       "select count(*)::int as n from public.gym_exercise_pool",
     );
 
-    const fresh = await migratedDb("0007_gym.sql", "0007_gym.sql");
+    const fresh = await migratedDb(
+      "0007_gym.sql",
+      "0008_skip_exercise.sql",
+      "0007_gym.sql",
+      "0008_skip_exercise.sql",
+    );
     const after = await fresh.query<{ n: number }>(
       "select count(*)::int as n from public.gym_exercise_pool",
     );

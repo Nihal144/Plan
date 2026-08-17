@@ -46,6 +46,9 @@ export async function addTask(
     // Anything but the fitness checkbox is a general task — the column's check
     // constraint would reject a third value anyway, so never pass it through raw.
     kind: formData.get("kind") === "fitness" ? "fitness" : "general",
+    // Opt-in per task. Harmless when unpaired: the SELECT policy only widens for
+    // an actual partner, so a flag set with nobody attached shares with nobody.
+    shared_with_partner: formData.get("shared_with_partner") === "on",
   });
 
   if (error) return { error: error.message };

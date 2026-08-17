@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 export const PLAN_VIEWS = [
-  { href: "/plan/tasks", label: "Tasks" },
+  { href: "/plan/tasks", label: "Things to do" },
   { href: "/plan/fitness", label: "Fitness" },
 ] as const;
 
@@ -22,7 +22,7 @@ export function ViewSwitcher({ current, date }: { current: PlanView; date?: stri
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const currentLabel =
-    PLAN_VIEWS.find((v) => v.href === current)?.label ?? "Tasks";
+    PLAN_VIEWS.find((v) => v.href === current)?.label ?? "Things to do";
 
   // Close on outside click and on Escape — a menu you can only dismiss by
   // picking something is a trap.

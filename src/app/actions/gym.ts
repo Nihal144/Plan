@@ -42,7 +42,7 @@ async function syncFitnessTasks(
 ) {
   const { data, error } = await supabase
     .from("workout_days")
-    .select("workout_entries(is_done)")
+    .select("workout_entries(is_done, skipped)")
     .eq("date", date);
 
   if (error) {
@@ -50,9 +50,9 @@ async function syncFitnessTasks(
     return;
   }
 
-  const entries = ((data ?? []) as { workout_entries: { is_done: boolean }[] }[]).flatMap(
-    (day) => day.workout_entries ?? [],
-  );
+  const entries = (
+    (data ?? []) as { workout_entries: { is_done: boolean; skipped: boolean }[] }[]
+  ).flatMap((day) => day.workout_entries ?? []);
   const allDone = isDayComplete(entries);
 
   // RLS scopes this to the caller's own tasks; dayFilter picks the ones that
@@ -175,6 +175,9 @@ export async function toggleEntry(formData: FormData) {
     .update({
       is_done: !done,
       completed_at: done ? null : new Date().toISOString(),
+      // Doing an exercise is the opposite of passing on it, so ticking clears
+      // any earlier skip rather than leaving the two states contradicting.
+      skipped: false,
     })
     .eq("id", id);
 
@@ -183,6 +186,43 @@ export async function toggleEntry(formData: FormData) {
   }
 
   // Ticking the last outstanding exercise is what turns the Fitness task green.
+  if (isValidDay(date)) await syncFitnessTasks(supabase, date);
+
+  revalidate();
+}
+
+/**
+ * Passes on an exercise for today without deleting it — it stays on the day as a
+ * record of what was planned. Reversible: skipping something already skipped
+ * un-skips it.
+ *
+ * `skipped` in the form is the CURRENT state, matching every other toggle here.
+ */
+export async function skipEntry(formData: FormData) {
+  await requireUser();
+
+  const id = String(formData.get("id") ?? "");
+  const date = String(formData.get("date") ?? "");
+  const skipped = formData.get("skipped") === "true";
+  if (!id) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("workout_entries")
+    .update({
+      skipped: !skipped,
+      // A skipped exercise was not done. The check constraint requires these two
+      // to agree, so they are cleared together.
+      is_done: false,
+      completed_at: null,
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error(`[skipEntry] ${error.code ?? "error"}: ${error.message}`);
+  }
+
+  // Skipping the last outstanding exercise completes the day.
   if (isValidDay(date)) await syncFitnessTasks(supabase, date);
 
   revalidate();
