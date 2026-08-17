@@ -81,6 +81,16 @@ export type GymDay = {
   dayId: string | null;
   dayNote: string;
   entries: WorkoutEntry[];
+  /**
+   * Why the entries could not be read, if they could not be.
+   *
+   * Carried out of the query rather than only logged, because the two states are
+   * indistinguishable in the UI: a failed read and an empty day both render as
+   * "nothing logged yet". That cost a day of confusion when 0008 had not been
+   * applied — the tab counter said 1/2 while the panel said the day was empty,
+   * because the counter does not select the column the migration adds.
+   */
+  entriesError: string | null;
 };
 
 // One literal, not a concatenation: supabase-js parses the select string at the
@@ -108,7 +118,17 @@ export const getGymDay = cache(
     if (day.error) logQueryError("getGymDay", day.error);
 
     const row = day.data as { id: string; day_note: string | null } | null;
-    if (!row) return { category, dayId: null, dayNote: "", entries: [] };
+    if (!row) {
+      return {
+        category,
+        dayId: null,
+        dayNote: "",
+        entries: [],
+        // A day row that does not exist yet is a genuinely empty day, not a
+        // failure — but a day row that could not be *read* is.
+        entriesError: day.error?.message ?? null,
+      };
+    }
 
     const entries = await supabase
       .from("workout_entries")
@@ -128,6 +148,7 @@ export const getGymDay = cache(
       dayId: row.id,
       dayNote: row.day_note ?? "",
       entries: (entries.data ?? []) as WorkoutEntry[],
+      entriesError: entries.error?.message ?? null,
     };
   },
 );

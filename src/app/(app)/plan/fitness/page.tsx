@@ -14,6 +14,7 @@ import { ViewSwitcher } from "../view-switcher";
 import { CategoryTabs } from "./category-tabs";
 import { DayNote } from "./day-note";
 import { AddEntry } from "./add-entry";
+import { LoadFailed } from "./load-failed";
 
 /**
  * Fitness > Gym: pick a training category, then log that category's work for the
@@ -121,7 +122,9 @@ export default async function FitnessPage({ searchParams }: PageProps<"/plan/fit
             </p>
           )}
 
-          {day.entries.length === 0 ? (
+          {day.entriesError ? (
+            <LoadFailed message={day.entriesError} />
+          ) : day.entries.length === 0 ? (
             <p className="py-2 text-sm text-zinc-500 dark:text-zinc-400">
               Nothing logged for {category.name} yet. Add your first exercise below.
             </p>
